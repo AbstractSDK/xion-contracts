@@ -22,3 +22,4 @@ serde_json         = { workspace = true }
 schemars           = { workspace = true }
 cosmos-sdk-proto   = { workspace = true }
 url                = { workspace = true }
+abstract-std = "0.26.0"

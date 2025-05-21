@@ -9,6 +9,7 @@ pub struct InstantiateMsg {
     pub type_urls: Vec<String>,
     pub grant_configs: Vec<GrantConfigStorage>,
     pub fee_config: FeeConfigStorage,
+    pub abstract_code_id: u64,
 }
 
 #[cw_serde]

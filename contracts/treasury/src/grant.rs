@@ -1,10 +1,18 @@
 pub mod allowance;
 
+use abstract_std::{
+    account::state::ACCOUNT_ID,
+    objects::{
+        module::ModuleInfo, module_factory::ModuleFactoryContract,
+        module_reference::ModuleReference, registry::RegistryContract,
+        salt::generate_instantiate_salt,
+    },
+};
 use cosmos_sdk_proto::{prost::Name, traits::MessageExt};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::Binary;
+use cosmwasm_std::{Binary, Deps};
 
-use crate::error::ContractResult;
+use crate::{error::ContractResult, state::ABSTRACT_CODE_ID};
 
 #[cw_serde]
 pub struct GrantConfig {
@@ -18,11 +26,20 @@ pub struct GrantConfig {
 pub enum AuthorizationData {
     Any(Any),
     ExecuteOnAccount(AuthorizationOnAccount),
+    ExecuteOnModule(AuthorizationOnModule),
 }
 
 #[cw_serde]
 
 pub struct AuthorizationOnAccount {
+    pub limit: Option<Any>,
+    pub filter: Option<Any>,
+}
+
+#[cw_serde]
+
+pub struct AuthorizationOnModule {
+    pub module_id: ModuleInfo,
     pub limit: Option<Any>,
     pub filter: Option<Any>,
 }
@@ -36,7 +53,7 @@ pub struct GrantConfigStorage {
 }
 
 impl AuthorizationData {
-    pub fn try_into_any(self, address: String) -> ContractResult<Any> {
+    pub fn try_into_any(self, deps: Deps, address: String) -> ContractResult<Any> {
         Ok(match self {
             AuthorizationData::Any(any) => any,
             AuthorizationData::ExecuteOnAccount(auth) => {
@@ -55,15 +72,33 @@ impl AuthorizationData {
                             .into(),
                     }
             }
+            AuthorizationData::ExecuteOnModule(auth) => {
+                // Handle the case where authorization is on an abstract module
+                let module_address = query_module_address(deps, auth.module_id, address)?;
+
+                Any {
+                        type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
+                        value:
+                            cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization {
+                                grants: vec![cosmos_sdk_proto::cosmwasm::wasm::v1::ContractGrant {
+                                    contract: module_address,
+                                    limit: auth.limit.map(Into::into),
+                                    filter:auth.filter.map(Into::into),
+                                }],
+                            }
+                            .to_bytes()?
+                            .into(),
+                    }
+            }
         })
     }
 }
 
 impl GrantConfigStorage {
-    pub fn try_into_grant_config(self, address: String) -> ContractResult<GrantConfig> {
+    pub fn try_into_grant_config(self, deps: Deps, address: String) -> ContractResult<GrantConfig> {
         Ok(GrantConfig {
             description: self.description,
-            authorization: self.authorization.try_into_any(address)?,
+            authorization: self.authorization.try_into_any(deps, address)?,
             optional: self.optional,
         })
     }
@@ -87,19 +122,25 @@ pub struct FeeConfig {
 pub enum AllowanceData {
     Any(Any),
     AllowanceOnAccount(AllowanceOnAccount),
+    AlowanceOnModule(AllowanceOnModule),
 }
 #[cw_serde]
 pub struct AllowanceOnAccount {
     pub allowance: Option<Any>,
 }
+#[cw_serde]
+pub struct AllowanceOnModule {
+    pub module_id: ModuleInfo,
+    pub allowance: Option<Any>,
+}
 
 impl FeeConfigStorage {
-    pub fn try_into_fee_config(self, address: String) -> ContractResult<FeeConfig> {
+    pub fn try_into_fee_config(self, deps: Deps, address: String) -> ContractResult<FeeConfig> {
         Ok(FeeConfig {
             description: self.description,
             allowance: match self.allowance {
                 None => None,
-                Some(allowance) => Some(allowance.try_into_any(address)?),
+                Some(allowance) => Some(allowance.try_into_any(deps, address)?),
             },
             expiration: self.expiration,
         })
@@ -107,21 +148,35 @@ impl FeeConfigStorage {
 }
 
 impl AllowanceData {
-    pub fn try_into_any(self, address: String) -> ContractResult<Any> {
+    pub fn try_into_any(self, deps: Deps, address: String) -> ContractResult<Any> {
         Ok(match self {
             AllowanceData::Any(any) => any,
             AllowanceData::AllowanceOnAccount(allowance) => {
                 // Handle the case where authorization is on the account itself
                 Any {
-                    type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
-                    value:
-                        cosmos_sdk_proto::xion::v1::ContractsAllowance {
-                            allowance: allowance.allowance.map(Into::into),
-                            contract_addresses: vec![address]
+                            type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
+                            value:
+                                cosmos_sdk_proto::xion::v1::ContractsAllowance {
+                                    allowance: allowance.allowance.map(Into::into),
+                                    contract_addresses: vec![address]
+                                }
+                                .to_bytes()?
+                                .into(),
                         }
-                        .to_bytes()?
-                        .into(),
-                }
+            }
+            AllowanceData::AlowanceOnModule(allowance) => {
+                // Handle the case where authorization is on the account itself
+                let module_address = query_module_address(deps, allowance.module_id, address)?;
+                Any {
+                            type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
+                            value:
+                                cosmos_sdk_proto::xion::v1::ContractsAllowance {
+                                    allowance: allowance.allowance.map(Into::into),
+                                    contract_addresses: vec![module_address]
+                                }
+                                .to_bytes()?
+                                .into(),
+                        }
             }
         })
     }
@@ -149,4 +204,43 @@ impl From<Any> for cosmos_sdk_proto::Any {
             value: value.value.to_vec(),
         }
     }
+}
+
+fn query_module_address(
+    deps: Deps,
+    module_id: ModuleInfo,
+    account_address: String,
+) -> ContractResult<String> {
+    // We need to resolve the module address
+    let abstract_code_id = ABSTRACT_CODE_ID.load(deps.storage)?;
+    let registry = RegistryContract::new(deps, abstract_code_id)?;
+    let module_type = &registry.query_modules_configs(vec![module_id], &deps.querier)?[0];
+
+    let module_address = match module_type.module.reference {
+        ModuleReference::Adapter(ref module_address)
+        | ModuleReference::Native(ref module_address)
+        | ModuleReference::Service(ref module_address) => module_address.to_string(),
+
+        abstract_std::objects::module_reference::ModuleReference::App(code_id)
+        | abstract_std::objects::module_reference::ModuleReference::Standalone(code_id) => {
+            let module_factory = ModuleFactoryContract::new(deps, abstract_code_id)?;
+            let account_id =
+                ACCOUNT_ID.query(&deps.querier, deps.api.addr_validate(&account_address)?)?;
+            let canonical_module_factory = deps
+                .api
+                .addr_canonicalize(module_factory.address.as_str())?;
+            let salt: Binary = generate_instantiate_salt(&account_id);
+
+            let checksum = deps.querier.query_wasm_code_info(code_id)?.checksum;
+            let module_address = cosmwasm_std::instantiate2_address(
+                checksum.as_slice(),
+                &canonical_module_factory,
+                &salt,
+            )?;
+            deps.api.addr_humanize(&module_address)?.to_string()
+        }
+        _ => panic!("Unsupported module type"),
+    };
+
+    Ok(module_address)
 }

@@ -5,7 +5,9 @@ use crate::error::ContractError::{
 use crate::error::ContractResult;
 use crate::grant::allowance::format_allowance;
 use crate::grant::{FeeConfigStorage, GrantConfigStorage};
-use crate::state::{Params, ADMIN, FEE_CONFIG, GRANT_CONFIGS, PARAMS, PENDING_ADMIN};
+use crate::state::{
+    Params, ABSTRACT_CODE_ID, ADMIN, FEE_CONFIG, GRANT_CONFIGS, PARAMS, PENDING_ADMIN,
+};
 use cosmos_sdk_proto::cosmos::authz::v1beta1::{QueryGrantsRequest, QueryGrantsResponse};
 use cosmos_sdk_proto::cosmos::feegrant::v1beta1::QueryAllowanceRequest;
 use cosmos_sdk_proto::prost::Message;
@@ -24,6 +26,7 @@ pub fn init(
     type_urls: Vec<String>,
     grant_configs: Vec<GrantConfigStorage>,
     fee_config: FeeConfigStorage,
+    abstract_code_id: u64,
 ) -> ContractResult<Response> {
     let treasury_admin = match admin {
         None => info.sender,
@@ -40,6 +43,8 @@ pub fn init(
     }
 
     FEE_CONFIG.save(deps.storage, &fee_config)?;
+
+    ABSTRACT_CODE_ID.save(deps.storage, &abstract_code_id)?;
 
     Ok(Response::new().add_event(
         Event::new("create_treasury_instance")
@@ -248,7 +253,7 @@ pub fn deploy_fee_grant(
                             // the authorization must match the one in the config
                             // Here authz_granter is supposed to be the abstract account (giving permissions)
                             if grant_config
-                                .try_into_grant_config(authz_granter.to_string())?
+                                .try_into_grant_config(deps.as_ref(), authz_granter.to_string())?
                                 .authorization
                                 .ne(&auth.into())
                             {
@@ -267,7 +272,7 @@ pub fn deploy_fee_grant(
     // Here authz_granter is supposed to be the abstract account (giving authz permissions)
     match fee_config
         .allowance
-        .map(|a| a.try_into_any(authz_granter.to_string()))
+        .map(|a| a.try_into_any(deps.as_ref(), authz_granter.to_string()))
         .transpose()?
     {
         // this treasury doesn't deploy any fees, and can return

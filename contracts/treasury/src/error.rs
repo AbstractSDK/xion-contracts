@@ -1,4 +1,5 @@
-use cosmwasm_std::StdError;
+use abstract_std::{objects::registry::RegistryError, AbstractError};
+use cosmwasm_std::{Instantiate2AddressError, StdError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ContractError {
@@ -13,6 +14,15 @@ pub enum ContractError {
 
     #[error(transparent)]
     URLParse(#[from] url::ParseError),
+
+    #[error(transparent)]
+    AbstractError(#[from] AbstractError),
+
+    #[error(transparent)]
+    RegistryError(#[from] RegistryError),
+
+    #[error(transparent)]
+    Instantiate2AddressError(#[from] Instantiate2AddressError),
 
     #[error("authz grant not found, msg_type: {msg_type_url}")]
     AuthzGrantNotFound { msg_type_url: String },

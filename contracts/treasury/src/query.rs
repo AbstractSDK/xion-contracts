@@ -1,6 +1,6 @@
 use crate::grant::{FeeConfig, FeeConfigStorage, GrantConfig, GrantConfigStorage};
 use crate::state::{Params, ADMIN, FEE_CONFIG, GRANT_CONFIGS, PARAMS, PENDING_ADMIN};
-use cosmwasm_std::{Addr, Order, StdResult, Storage};
+use cosmwasm_std::{Addr, Deps, Order, StdResult, Storage};
 
 pub fn grant_config_type_urls(store: &dyn Storage) -> StdResult<Vec<String>> {
     Ok(GRANT_CONFIGS
@@ -10,15 +10,15 @@ pub fn grant_config_type_urls(store: &dyn Storage) -> StdResult<Vec<String>> {
 }
 
 pub fn grant_config_by_type_url(
-    store: &dyn Storage,
+    deps: Deps,
     msg_type_url: String,
     account_address: String,
 ) -> StdResult<GrantConfig> {
     GRANT_CONFIGS
-        .load(store, msg_type_url)
+        .load(deps.storage, msg_type_url)
         .and_then(|grant_config| {
             grant_config
-                .try_into_grant_config(account_address)
+                .try_into_grant_config(deps, account_address)
                 .map_err(Into::into)
         })
 }
@@ -34,10 +34,12 @@ pub fn raw_fee_config(store: &dyn Storage) -> StdResult<FeeConfigStorage> {
     FEE_CONFIG.load(store)
 }
 
-pub fn fee_config(store: &dyn Storage, address: String) -> StdResult<FeeConfig> {
-    FEE_CONFIG
-        .load(store)
-        .and_then(|fee_config| fee_config.try_into_fee_config(address).map_err(Into::into))
+pub fn fee_config(deps: Deps, address: String) -> StdResult<FeeConfig> {
+    FEE_CONFIG.load(deps.storage).and_then(|fee_config| {
+        fee_config
+            .try_into_fee_config(deps, address)
+            .map_err(Into::into)
+    })
 }
 
 pub fn admin(store: &dyn Storage) -> StdResult<Addr> {

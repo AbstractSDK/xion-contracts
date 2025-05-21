@@ -27,6 +27,7 @@ pub fn instantiate(
         msg.type_urls,
         msg.grant_configs,
         msg.fee_config,
+        msg.abstract_code_id,
     )
 }
 
@@ -71,16 +72,14 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             msg_type_url,
             account_address,
         } => to_json_binary(&query::grant_config_by_type_url(
-            deps.storage,
+            deps,
             msg_type_url,
             account_address,
         )?),
         QueryMsg::GrantConfigTypeUrls {} => {
             to_json_binary(&query::grant_config_type_urls(deps.storage)?)
         }
-        QueryMsg::FeeConfig { address } => {
-            to_json_binary(&query::fee_config(deps.storage, address)?)
-        }
+        QueryMsg::FeeConfig { address } => to_json_binary(&query::fee_config(deps, address)?),
         QueryMsg::RawFeeConfig {} => to_json_binary(&query::raw_fee_config(deps.storage)?),
         QueryMsg::Admin {} => to_json_binary(&query::admin(deps.storage)?),
         QueryMsg::PendingAdmin {} => to_json_binary(&query::pending_admin(deps.storage)?),

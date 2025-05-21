@@ -12,6 +12,8 @@ pub const ADMIN: Item<Addr> = Item::new("admin");
 
 pub const PENDING_ADMIN: Item<Addr> = Item::new("pending_admin");
 
+pub const ABSTRACT_CODE_ID: Item<u64> = Item::new("abstract_code_id");
+
 #[cw_serde]
 pub struct Params {
     pub display_url: String,
