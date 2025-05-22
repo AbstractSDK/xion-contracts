@@ -59,7 +59,7 @@ impl AuthorizationData {
             AuthorizationData::ExecuteOnAccount(auth) => {
                 // Handle the case where authorization is on the account itself
                 Any {
-                        type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
+                        type_url:  cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::type_url(),
                         value:
                             cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization {
                                 grants: vec![cosmos_sdk_proto::cosmwasm::wasm::v1::ContractGrant {
@@ -77,7 +77,7 @@ impl AuthorizationData {
                 let module_address = query_module_address(deps, auth.module_id, address)?;
 
                 Any {
-                        type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
+                        type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::type_url(),
                         value:
                             cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization {
                                 grants: vec![cosmos_sdk_proto::cosmwasm::wasm::v1::ContractGrant {
@@ -106,7 +106,7 @@ impl GrantConfigStorage {
 
 #[cw_serde]
 pub struct FeeConfigStorage {
-    description: String,
+    pub description: String,
     pub allowance: Option<AllowanceData>,
     pub expiration: Option<u32>,
 }
@@ -153,30 +153,13 @@ impl AllowanceData {
             AllowanceData::Any(any) => any,
             AllowanceData::AllowanceOnAccount(allowance) => {
                 // Handle the case where authorization is on the account itself
-                Any {
-                            type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
-                            value:
-                                cosmos_sdk_proto::xion::v1::ContractsAllowance {
-                                    allowance: allowance.allowance.map(Into::into),
-                                    contract_addresses: vec![address]
-                                }
-                                .to_bytes()?
-                                .into(),
-                        }
+                // (TODO, for now we just pass the specified allowance, we have a bug with ContractsAllowance)
+                allowance.allowance.unwrap()
             }
             AllowanceData::AlowanceOnModule(allowance) => {
                 // Handle the case where authorization is on the account itself
-                let module_address = query_module_address(deps, allowance.module_id, address)?;
-                Any {
-                            type_url: cosmos_sdk_proto::cosmwasm::wasm::v1::ContractExecutionAuthorization::full_name(),
-                            value:
-                                cosmos_sdk_proto::xion::v1::ContractsAllowance {
-                                    allowance: allowance.allowance.map(Into::into),
-                                    contract_addresses: vec![module_address]
-                                }
-                                .to_bytes()?
-                                .into(),
-                        }
+                // (TODO, for now we just pass the specified allowance, we have a bug with ContractsAllowance)
+                allowance.allowance.unwrap()
             }
         })
     }
